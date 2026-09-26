@@ -1,0 +1,20 @@
+[project]
+name = "one_time_pad_MILLIEMD"
+version = "0.1"
+authors = [
+    {name = "MillieMD"}
+]
+description = "One time pad encoding and decoding for messages"
+readme="README.md"
+
+requires-python = ">=3"
+dependencies = [
+    "sys",
+    "argparse"
+]
+
+[project.scripts]
+otp-cli = "otp:main"
+
+[project.urls]
+Homepage = "https://github.com/MillieMD/otp"
