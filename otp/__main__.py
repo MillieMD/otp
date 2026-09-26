@@ -1,51 +1,66 @@
 # IMPORTS
 import sys
-import time
-import winsound # Look into beeps for linux so i can make this portable
+import os
 import argparse
+
+#FILE LOCATIONS
+CONFIG_FOLDER = os.getenv("HOME") + "/.config/otp/"
+CODE_BOOK_FILE = "codebook.txt"
+CONVERSION_TABLE_FILE = "conversiontable.txt"
 
 # INDICATORS
 CODE_INDICATOR = "0"
 FIG_INDICATOR = "90"
 
-# MORSE CODE CONSTANTS
-FREQ = 900
-
-TIME_UNIT_MILLISECONDS = 300
-DOT_MILLISECONDS = 1 * TIME_UNIT_MILLISECONDS
-DASH_MILLISECONDS = 3 * TIME_UNIT_MILLISECONDS
-SECONDS_BETWEEN_LETTERS = (3 * TIME_UNIT_MILLISECONDS)/1000 # convert s to milliseconds
-SECONDS_BETWEEN_WORDS = (7 * TIME_UNIT_MILLISECONDS)/1000 # convert s to milliseconds
-
-# OUTPUT
-ID_REPEAT = 3
-
 # DICTIONARY FUNCTIONS
-def init_dict(d, filename) -> dict:
+def init_dict(filename) -> dict:
+    """Initialise a dictionary by reading from a file. 
+    Assumes comma seperated key value pairs, one per line."""
 
-    f = open(filename)
-    content = f.read()
+    d = {}
 
-    for line in content.split("\n"):
-        key, value = line.split(",")
-        d[key.strip()] = value.strip()
-    
+    with open(filename) as file:
+        for line in file:
+            key, value = line.split(",")
+            d[key.strip()] = value.strip()
 
-def key_from_dict_value(d, value):
+    return d
+
+
+def key_from_dict_value(d, value) -> list:
+    """Retrieve keys from a dictionary based on their value"""
+
     return [key for key, item in d.items() if item == value]
 
 
-# MORSE CODE STUFF
-def play_from_string(string : str):
-    for c in string:
-        if c == ".":
-            winsound.Beep(FREQ, DOT_MILLISECONDS)
+# VALIDATE CONFIG
+def is_valid_config(file_path : str) -> bool:
+    """Ensure that config files are using the expected format"""
 
-        if c == "-":
-            winsound.Beep(FREQ, DASH_MILLISECONDS)
+    with open(file_path) as file:
+        for line in file:
+            if not is_valid_config_line(line): return False
+
+    return True
+
+
+def is_valid_config_line(line) -> bool:
+    """Check that config lines are in expected format.
+    Valid format: [int],[str]"""
+
+    split = line.split(",")
+
+    if len(split) != 2:
+        return False
+
+    if not split[0].strip().isdigit():
+        return False
+
+    return True
+
 
 # ENCODING
-def encode_as_digits(message : str) -> str:
+def encode_as_digits(code_book : dict, conversion_table : dict, message : str) -> str:
 
     message_split = message.split(" ")
     digits = ""
@@ -62,7 +77,7 @@ def encode_as_digits(message : str) -> str:
             
             for c in word:
                 if c.isdigit():
-                    if prev_c.isdigit() == False:
+                    if not prev_c.isdigit():
                         digits += FIG_INDICATOR 
                     
                     digits += c*2
@@ -83,15 +98,13 @@ def digits_to_cipher(grid, key, digits) -> str:
     i = 0
 
     for c in digits:
-        n = grid[i]
-        
-        c_int = int(c)
-        n_int = int(n)
+        n = int(grid[i])
+        c = int(c)
 
-        if c_int < n_int:
-            c_int += 10
+        if c < n:
+            c += 10
         
-        cipher += str((c_int - n_int))
+        cipher += str((c - n))
 
         i += 1
 
@@ -104,11 +117,15 @@ def digits_to_cipher(grid, key, digits) -> str:
 def decode_digits(message) -> str :
     return ""
 
+
 def cipher_to_digits(grid, key, digits) -> str :
     return ""
 
+
 # DISPLAY FORMATTING
-def print_digits(digits):
+def print_digits(digits) -> None:
+    """Print digits in groups of 5"""
+
     count = 0
     for c in digits:
         print(c, end = "")
@@ -117,22 +134,6 @@ def print_digits(digits):
         if count % 5 == 0:
             print(" ", end = "")
 
-# code_book = {}
-# conversion_table = {}
-
-# pad = "12345678987654321546372819978676564635241"
-# key = "12345"
-
-init_dict(code_book, "codebook.txt")
-init_dict(conversion_table, "conversiontable.txt")
-
-plaintext = sys.argv[1]
-plaintext = plaintext.upper()
-
-# digits = encode_as_digits(plaintext)
-# cipher = digits_to_cipher(pad, key, digits)
-
-# print_digits(cipher)
 
 def main():
     main_parser = argparse.ArgumentParser(
@@ -143,13 +144,44 @@ def main():
     main_parser.add_argument("--code-book", action="store_true", help="Print the location of the codebook.txt file")
     main_parser.add_argument("--conversion", action="store_true", help="Print the location of the conversiontable.txt file")
 
-    subparsers = main_parser.add_subparsers(help="subcommand help")
+    subparsers = main_parser.add_subparsers(dest="subcommand", help="subcommand help")
 
     encode_parser = subparsers.add_parser("encode", help="Encode a message using the OTP protocol")
     encode_parser.add_argument('message', type=str, help='Message to encode')
 
-    decode_parser = subparsers.add_parser("decode", help="Decode a message that was send using the OTP protocol")
+    decode_parser = subparsers.add_parser("decode", help="Decode a message that was sent using the OTP protocol")
     decode_parser.add_argument('message', type=str, help='Message to decode')
 
     args = main_parser.parse_args()
+
+    if args.code_book:
+        print("The code book values are read from: ", CONFIG_FOLDER + CODE_BOOK_FILE)
+        return
+
+    if args.conversion:
+        print("The conversaion table values are read from ", CONFIG_FOLDER + CONVERSION_TABLE_FILE)
+        return
+
+    if not is_valid_config(CONFIG_FOLDER + CODE_BOOK_FILE):
+        print("ERROR: Invalid code book formatting", file=sys.stderr)
+        exit(1)
+
+    if not is_valid_config(CONFIG_FOLDER + CONVERSION_TABLE_FILE):
+        print("Invalid conversion table formatting", file=sys.stderr)
+        exit(1)
+
+    code_book = init_dict(CONFIG_FOLDER + CODE_BOOK_FILE)
+    conversion_table = init_dict(CONFIG_FOLDER + CONVERSION_TABLE_FILE)
+
+    pad = "1234567897864913561937567328961349"
+    key = pad[0:5]
+
+    if args.subcommand == "encode":
+        digits = encode_as_digits(code_book, conversion_table, args.message.upper())
+        cipher = digits_to_cipher(pad, key, digits)
+
+        print_digits(cipher)
+
+    elif args.subcommand == "decode":
+        print("TODO: decode")
 
